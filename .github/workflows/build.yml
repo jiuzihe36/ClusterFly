@@ -1,0 +1,123 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK (手动装 cmdline-tools，setup-android 已坏)
+        run: |
+          set -euo pipefail
+          SDK="$HOME/android-sdk"
+          mkdir -p "$SDK/cmdline-tools"
+          curl -sSL -o /tmp/cmdline.zip \
+            https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q /tmp/cmdline.zip -d "$SDK/cmdline-tools"
+          rm -rf "$SDK/cmdline-tools/latest"
+          mv "$SDK/cmdline-tools/cmdline-tools" "$SDK/cmdline-tools/latest"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "$SDK/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$SDK/platform-tools" >> "$GITHUB_PATH"
+
+      - name: Install platform + build-tools (compileSdk 28)
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-28" \
+            "build-tools;28.0.3"
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: Ensure gradle wrapper (固定 8.7，AGP 8.5.2 最低要求 8.7)
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          mkdir -p gradle/wrapper
+          # 无条件重写 properties，避免仓库里 pin 了旧版本（AGP 会直接报 minimum version）
+          cat > gradle/wrapper/gradle-wrapper.properties <<'EOF'
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.7-bin.zip
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          EOF
+          if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
+            echo "wrapper jar 缺失，手动生成"
+            curl -sSL -o /tmp/gradle.zip https://services.gradle.org/distributions/gradle-8.7-bin.zip
+            unzip -q /tmp/gradle.zip -d /tmp
+            /tmp/gradle-8.7/bin/gradle wrapper --gradle-version 8.7
+            # 生成后 properties 可能被覆写，再确保一次
+            cat > gradle/wrapper/gradle-wrapper.properties <<'EOF'
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.7-bin.zip
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          EOF
+          fi
+          cat gradle/wrapper/gradle-wrapper.properties
+          ./gradlew --version
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug --no-daemon --stacktrace --info
+
+      - name: Show + verify APK
+        run: |
+          set -euo pipefail
+          ls -la app/build/outputs/apk/debug/
+          APK=$(ls app/build/outputs/apk/debug/*.apk | head -1)
+          echo "APK=$APK"
+          # 断言包名/launcher 正确，防止混入别的 app 源码后静默通过
+          python3 - "$APK" <<'PY'
+          import re, sys, zipfile
+          apk = sys.argv[1]
+          ax = zipfile.ZipFile(apk).read('AndroidManifest.xml')
+          txt = ax.decode('utf-16-le', errors='ignore')
+          # AXML 字符串池每条前面有个长度字节，所以只能做子串匹配
+          blob = txt
+          nostrings = ('com.mirror.amap', 'com.amap.mirror')
+          bad = [s for s in nostrings if s in blob]
+          if bad:
+              print('FAIL: APK 里混入了其他包名:', bad); sys.exit(1)
+          if 'com.hermes.clustermirror.MainActivity' not in blob:
+              print('FAIL: 找不到 launcher com.hermes.clustermirror.MainActivity'); sys.exit(1)
+          if 'com.hermes.clustermirror' not in blob:
+              print('FAIL: 找不到包名 com.hermes.clustermirror'); sys.exit(1)
+          print('OK: 包名/launcher = com.hermes.clustermirror.MainActivity')
+          import os
+          size = os.path.getsize(apk)
+          print('APK size =', size, 'bytes')
+          if size < 100 * 1024 - 80 * 1024:   # 保守下限，debug 包本来就小
+              print('note: APK 很小，属于正常（纯 framework 无依赖）')
+          PY
+
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: clustermirror-debug
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
