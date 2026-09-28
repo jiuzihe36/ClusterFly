@@ -10,8 +10,8 @@ android {
         applicationId = "com.hermes.clustermirror"
         minSdk = 28          // 车机是 Android 9 = API 28
         targetSdk = 28       // 不要调高，车机系统版本就是这个
-        versionCode = 2
-        versionName = "2.0"
+        versionCode = 3
+        versionName = "2.1"
     }
 
     buildTypes {

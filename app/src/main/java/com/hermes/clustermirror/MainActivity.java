@@ -16,6 +16,7 @@ import android.app.Activity;
 import android.app.ActivityOptions;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.graphics.Color;
@@ -70,6 +71,8 @@ public class MainActivity extends Activity {
     private TextView statusView;
     private TextView logView;
     private CheckBox forceMirrorCb;
+    private CheckBox autoFlyCb;            // 记住并自动飞上次
+    private SharedPreferences prefs;
     private LinearLayout diagBox;
     private AppAdapter adapter;
     private List<ResolveInfo> allApps = new ArrayList<>();
@@ -80,10 +83,50 @@ public class MainActivity extends Activity {
         service = new ClusterMirrorService(this);
         mpm = (MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
 
+        prefs = getSharedPreferences("fly", MODE_PRIVATE);
         buildUi();
         loadApps();
         refreshCluster();
+
+        // 勾选状态持久化
+        forceMirrorCb.setOnCheckedChangeListener(
+                (b, c) -> prefs.edit().putBoolean("force_mirror", c).apply());
+        autoFlyCb.setOnCheckedChangeListener(
+                (b, c) -> prefs.edit().putBoolean("auto_fly", c).apply());
+        forceMirrorCb.setChecked(prefs.getBoolean("force_mirror", false));
+        autoFlyCb.setChecked(prefs.getBoolean("auto_fly", true));
+
         log("就绪。点列表里的 App 开始飞屏。");
+
+        // 自动恢复上次飞屏（等 onResume 之后再动，避免授权弹窗时机问题）
+        final String lastPkg = prefs.getString("last_pkg", null);
+        if (autoFlyCb.isChecked() && lastPkg != null
+                && getPackageManager().getLaunchIntentForPackage(lastPkg) != null) {
+            final String lastLabel = prefs.getString("last_label", lastPkg);
+            log("自动恢复上次飞屏: " + lastLabel);
+            statusView.postDelayed(() -> autoFly(lastPkg), 800);
+        }
+    }
+
+    /** 按包名找启动入口。 */
+    private ResolveInfo findLaunchInfo(String pkg) {
+        Intent i = getPackageManager().getLaunchIntentForPackage(pkg);
+        return i == null ? null : getPackageManager().resolveActivity(i, 0);
+    }
+
+    /** 恢复上次的飞屏操作。 */
+    private void autoFly(String pkg) {
+        ResolveInfo ri = findLaunchInfo(pkg);
+        if (ri == null) {
+            log("❌ 上次的 App 已卸载: " + pkg);
+            return;
+        }
+        onAppClick(ri);
+    }
+
+    /** 记住本次选择（下次开机打开自动恢复）。 */
+    private void remember(String pkg, String label) {
+        prefs.edit().putString("last_pkg", pkg).putString("last_label", label).apply();
     }
 
     // ================= UI =================
@@ -103,6 +146,11 @@ public class MainActivity extends Activity {
         forceMirrorCb.setTextSize(13);
         root.addView(forceMirrorCb);
 
+        autoFlyCb = new CheckBox(this);
+        autoFlyCb.setText("记住并自动飞上次（打开本软件即恢复）");
+        autoFlyCb.setTextSize(13);
+        root.addView(autoFlyCb);
+
         // 按钮行：停止飞屏 / 诊断
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -113,6 +161,27 @@ public class MainActivity extends Activity {
         row.addView(stopBtn);
         row.addView(diagBtn);
         root.addView(row);
+
+        // ---- 导航行（车机无系统返回/桌面键，这里补上）----
+        LinearLayout navRow = new LinearLayout(this);
+        navRow.setOrientation(LinearLayout.HORIZONTAL);
+        navRow.addView(mkButton("返回桌面", v -> {
+            Intent home = new Intent(Intent.ACTION_MAIN);
+            home.addCategory(Intent.CATEGORY_HOME);
+            home.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(home);
+            log("已返回车机桌面（飞屏继续运行）");
+        }));
+        navRow.addView(mkButton("最小化", v -> {
+            moveTaskToBack(true);   // 任务退到后台，不销毁，飞屏继续
+            log("已最小化（飞屏继续运行）");
+        }));
+        navRow.addView(mkButton("关闭", v -> {
+            log("关闭软件：已停止飞屏并退出");
+            stopFly();
+            finish();
+        }));
+        root.addView(navRow);
 
         // ---- 诊断区（探测版三按钮 + 日志）----
         diagBox = new LinearLayout(this);
@@ -294,6 +363,7 @@ public class MainActivity extends Activity {
             return;
         }
         log("── 飞屏: " + label + " (" + pkg + ") ──");
+        remember(pkg, label);
 
         if (!forceMirrorCb.isChecked()) {
             if (tryDirectLaunch(info)) {
