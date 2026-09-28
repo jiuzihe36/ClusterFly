@@ -7,7 +7,8 @@
 
 | 版本 | 直链 |
 |---|---|
-| **v2.0**（当前） | https://github.com/jiuzihe36/ClusterFly/releases/download/v2.0/ClusterFly-v2.0.apk |
+| **v2.1**（当前） | https://github.com/jiuzihe36/ClusterFly/releases/download/v2.1/ClusterFly-v2.1.apk |
+| v2.0 | https://github.com/jiuzihe36/ClusterFly/releases/download/v2.0/ClusterFly-v2.0.apk |
 
 > APK 亦可从仓库 Actions artifact `clustermirror-debug` 获取（每次 push main 自动出新包）。
 > 第三方改版高德等大体积安装包（>100MB）GitHub 无法托管，随本地资料包分发。
@@ -21,6 +22,12 @@
     仪表 `Presentation` 的 Surface（保持宽高比 letterbox，不拉伸变形）
   - 逻辑：先试①，异常自动切②；若①"无异常但仪表无画面"，勾选**「强制镜像」**再点一次
 - **录屏授权**：系统弹窗一次，之后常驻
+- **记住并自动飞上次**（v2.1）：每次飞的选择本地持久化，下次开机打开本软件
+  → 800ms 后自动飞上次的 App（可勾选开关，勾选状态也记忆）
+- **导航按钮**（v2.1，车机无系统导航键）：
+  - `返回桌面` — 跳回车机 Launcher，**飞屏继续**
+  - `最小化` — 任务退后台不销毁，**飞屏继续**
+  - `关闭` — 停止飞屏并退出软件
 - **停止飞屏**：一键释放虚拟屏 / 授权 / Presentation
 - **诊断区**：①列屏幕 ②试画仪表 ③全部释放 —— 上车先跑①，输出可直接贴回反馈
 
