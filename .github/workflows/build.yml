@@ -54,7 +54,8 @@ jobs:
       - name: Ensure gradle wrapper (固定 8.7，AGP 8.5.2 最低要求 8.7)
         run: |
           set -euo pipefail
-          chmod +x gradlew
+          # gradlew 可能不在仓库里（由下方 wrapper 生成步骤补出），先容错
+          if [ -f gradlew ]; then chmod +x gradlew; fi
           mkdir -p gradle/wrapper
           # 无条件重写 properties，避免仓库里 pin 了旧版本（AGP 会直接报 minimum version）
           cat > gradle/wrapper/gradle-wrapper.properties <<'EOF'
@@ -82,7 +83,10 @@ jobs:
           ./gradlew --version
 
       - name: Build debug APK
-        run: ./gradlew assembleDebug --no-daemon --stacktrace --info
+        run: |
+          if [ ! -f gradlew ]; then echo "gradlew 仍缺失"; exit 1; fi
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace --info
 
       - name: Show + verify APK
         run: |
