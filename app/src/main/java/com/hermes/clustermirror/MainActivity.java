@@ -270,7 +270,8 @@ public class MainActivity extends Activity {
                 @Override
                 @SuppressWarnings("unchecked")
                 protected void publishResults(CharSequence c, FilterResults r) {
-                    setVisible((List<ResolveInfo>) r.values);
+                    final List<ResolveInfo> list = (List<ResolveInfo>) r.values;
+                    runOnUiThread(() -> setVisible(list));   // 保证在 UI 线程刷新
                 }
             };
         }
@@ -373,11 +374,12 @@ public class MainActivity extends Activity {
             viewH = ClusterMirrorService.INSTRUMENT_HEIGHT;
             viewW = (int) (viewH * aspect);
         }
+        final int boxW = viewW, boxH = viewH;   // 内部类只能引用 final
 
         FrameLayout fl = new FrameLayout(this);
         fl.setBackgroundColor(Color.BLACK);
         SurfaceView sv = new SurfaceView(this);
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(viewW, viewH, Gravity.CENTER);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(boxW, boxH, Gravity.CENTER);
         fl.addView(sv, lp);
 
         presentation = new ClusterMirrorService.InstrumentPresentation(this, cluster);
@@ -391,7 +393,7 @@ public class MainActivity extends Activity {
                                     | DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
                             holder.getSurface(), null, null);
                     log("✅ 通道②镜像: 虚拟屏 " + mainW + "x" + mainH
-                            + " → 仪表 Surface (letterbox " + viewW + "x" + viewH + ")");
+                            + " → 仪表 Surface (letterbox " + boxW + "x" + boxH + ")");
                     if (pkg != null) launchOnMain(pkg);
                     updateStatus();
                 } catch (Throwable t) {
