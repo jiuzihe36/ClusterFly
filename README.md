@@ -3,6 +3,15 @@
 > 车机仪表投屏工具：**在列表里点哪个 App，就把哪个 App 飞到仪表屏**。
 > 双通道自动选择，纯 Android 标准 API，免 root。
 
+## 下载
+
+| 版本 | 直链 |
+|---|---|
+| **v2.0**（当前） | https://github.com/jiuzihe36/ClusterFly/releases/download/v2.0/ClusterFly-v2.0.apk |
+
+> APK 亦可从仓库 Actions artifact `clustermirror-debug` 获取（每次 push main 自动出新包）。
+> 第三方改版高德等大体积安装包（>100MB）GitHub 无法托管，随本地资料包分发。
+
 ## 功能
 
 - **已安装 App 列表**：图标 + 名称，支持搜索过滤
